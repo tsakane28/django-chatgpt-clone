@@ -1,0 +1,452 @@
+{% extends 'chat/base.html' %}
+{% load static %}
+
+{% block content %}
+<section class="w-16 bg-neutral flex flex-col items-center gap-y-4 h-screen pt-4 relative duration-100 shadow-md" id="sidebar">
+    <div class="flex items-center justify-between w-full px-2 mx-auto">
+        <div class="flex flex-row items-center gap-2 mx-auto w-full sidebar-content">
+            <img src="{% static 'images/logo.svg' %}" alt="logo" class="w-6 h-6">
+            <h1>ChatGPT</h1>
+        </div>
+        <div class="mx-auto btn btn-square btn-ghost" id="toggle-sidebar">
+            <i class="fas fa-bars"></i>
+        </div>
+    </div>
+
+    <ul class="w-full menu rounded-box">
+        <li>
+            <a class="border border-slate-500" id="clear-chat-btn">
+                <i class="fas fa-trash"></i>
+                <p class="sidebar-content">Clear chat</p>
+            </a>
+        </li>
+    </ul>
+
+    <ul class="absolute bottom-0 w-full gap-1 menu rounded-box">
+        <li>
+            <a id="toggle-theme-btn">
+                {% if theme == 'dark' %}
+                <i class="fas fa-sun"></i>
+                <p class="sidebar-content">Light mode</p>
+                {% else %}
+                <i class="fas fa-moon"></i>
+                <p class="sidebar-content">Dark mode</p>
+                {% endif %}
+            </a>
+        </li>
+        <li>
+            <a href="https://www.buymeacoffee.com/eyuel" rel="noreferrer" target="_blank">
+                <i class="fas fa-coffee"></i>
+                <p class="sidebar-content">Support this project</p>
+            </a>
+        </li>
+        <li>
+            <a rel="noreferrer" target="_blank" href="https://github.com/EyuCoder/chatgpt-clone">
+                <i class="fab fa-github"></i>
+                <p class="sidebar-content">Github</p>
+            </a>
+        </li>
+        <li>
+            <a id="open-settings-btn">
+                <i class="fas fa-key"></i>
+                <p class="sidebar-content">OpenAI Key</p>
+            </a>
+        </li>
+    </ul>
+</section>
+
+<main class="relative flex flex-col h-screen p-1 overflow-hidden dark:bg-light-grey flex-grow">
+    <div class="mx-auto my-4 tabs tabs-boxed w-fit">
+        <a id="gpt-3-5" class="tab {% if not messages or messages.0.gpt_version == 'gpt-3.5-turbo' %}tab-active{% endif %}">GPT-3.5</a>
+        <a id="gpt-4" class="tab {% if messages and messages.0.gpt_version == 'gpt-4' %}tab-active{% endif %}">GPT-4</a>
+    </div>
+
+    <section class="flex flex-col flex-grow w-full px-4 overflow-y-scroll sm:px-10 md:px-32" id="messages-container">
+        {% if messages %}
+            {% for message in messages %}
+                <div class="flex items-end my-2 gap-2 {% if message.ai %}flex-row-reverse justify-end{% else %}flex-row justify-end{% endif %}">
+                    {% if message.selected_model == 'DALL·E' and message.ai %}
+                        <img class="bg-cover rounded-lg shadow-lg" src="{{ message.text }}" alt="dalle generated picture" loading="lazy">
+                    {% else %}
+                        <div class="w-screen overflow-hidden chat {% if message.ai %}chat-start{% else %}chat-end{% endif %}">
+                            <div class="chat-bubble text-neutral-content">
+                                <div class="markdown-content">{{ message.text|safe }}</div>
+                                <div class="{% if message.ai %}text-left{% else %}text-right{% endif %} text-xs">
+                                    {{ message.created_at|date:"M d, Y, g:i a" }}
+                                </div>
+                            </div>
+                        </div>
+                    {% endif %}
+
+                    <div class="avatar">
+                        <div class="w-8 border rounded-full border-slate-400">
+                            {% if message.ai %}
+                                <i class="fas fa-desktop w-6 h-full m-auto"></i>
+                            {% else %}
+                                <i class="fas fa-user w-6 h-full m-auto"></i>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            {% endfor %}
+        {% else %}
+            <div class="flex my-2">
+                <div class="w-screen overflow-hidden">
+                    <ul class="grid grid-cols-2 gap-2 mx-10">
+                        {% for suggestion in template_suggestions %}
+                            <li class="p-6 border rounded-lg border-slate-300 hover:border-slate-500 suggestion-item" data-prompt="{{ suggestion.prompt }}">
+                                <p class="text-base font-semibold">{{ suggestion.title }}</p>
+                                <p class="text-sm">{{ suggestion.prompt }}</p>
+                            </li>
+                        {% endfor %}
+                    </ul>
+                </div>
+            </div>
+        {% endif %}
+
+        <div id="thinking" class="flex items-end mt-4 hidden">
+            <div class="avatar">
+                <div class="w-8 border rounded-full">
+                    <i class="fas fa-desktop w-6 h-full m-auto"></i>
+                </div>
+            </div>
+            <div class="chat chat-start">
+                <div class="chat-bubble thinking">thinking...</div>
+            </div>
+        </div>
+
+        <span id="messages-end"></span>
+    </section>
+
+    <form id="message-form" class="flex flex-col px-10 mb-2 md:px-32 join sm:flex-row">
+        {% csrf_token %}
+        <select name="selected_model" class="w-full sm:w-40 select select-bordered join-item">
+            <option value="ChatGPT">ChatGPT</option>
+            <option value="DALL·E">DALL·E</option>
+        </select>
+        <input type="hidden" name="gpt_version" id="gpt-version-input" value="gpt-3.5-turbo">
+        <div class="flex items-stretch justify-between w-full">
+            <textarea name="text" class="w-full grow input input-bordered join-item max-h-[20rem] min-h-[3rem]" placeholder="Type your message here..."></textarea>
+            <button type="submit" class="join-item btn" disabled>
+                <i class="fas fa-paper-plane"></i>
+            </button>
+        </div>
+    </form>
+
+    <!-- Settings Modal -->
+    <div class="modal" id="settings-modal">
+        <div class="relative modal-box">
+            <label id="close-modal" class="absolute btn btn-sm btn-circle right-2 top-2">✕</label>
+            <h3 class="text-lg font-bold">Settings</h3>
+            <div class="py-4">
+                <form id="api-key-form" class="flex flex-col items-center justify-center gap-2">
+                    {% csrf_token %}
+                    <p class="text-lg font-semibold">Use your own API-key.</p>
+                    <p>Keys are saved in your own browser</p>
+                    <p class="italic">
+                        Get OpenAI API key
+                        <a class="text-blue-600" rel="noreferrer" target="_blank" href="https://platform.openai.com/account/api-keys">
+                            here
+                        </a>.
+                    </p>
+                    <input type="password" id="api-key-input" class="w-full max-w-xs input input-bordered" placeholder="Enter your OpenAI API key">
+                    <button type="submit" class="w-full max-w-xs btn btn-outline" id="save-api-key-btn">
+                        save to localStorage
+                    </button>
+                    {% if api_key_exists %}
+                    <button type="button" id="remove-api-key-btn" class="w-full max-w-xs btn btn-error">
+                        remove keys
+                    </button>
+                    {% endif %}
+                    <p id="api-key-error" class="text-error"></p>
+                </form>
+            </div>
+        </div>
+    </div>
+</main>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // DOM elements
+        const messageForm = document.getElementById('message-form');
+        const messageInput = messageForm.querySelector('textarea[name="text"]');
+        const submitButton = messageForm.querySelector('button[type="submit"]');
+        const messagesContainer = document.getElementById('messages-container');
+        const messagesEnd = document.getElementById('messages-end');
+        const modelSelect = document.querySelector('select[name="selected_model"]');
+        const gptVersionInput = document.getElementById('gpt-version-input');
+        const gpt35Button = document.getElementById('gpt-3-5');
+        const gpt4Button = document.getElementById('gpt-4');
+        const thinkingIndicator = document.getElementById('thinking');
+        const clearChatBtn = document.getElementById('clear-chat-btn');
+        const toggleThemeBtn = document.getElementById('toggle-theme-btn');
+        const toggleSidebarBtn = document.getElementById('toggle-sidebar');
+        const sidebar = document.getElementById('sidebar');
+        const sidebarContent = document.querySelectorAll('.sidebar-content');
+        const openSettingsBtn = document.getElementById('open-settings-btn');
+        const settingsModal = document.getElementById('settings-modal');
+        const closeModalBtn = document.getElementById('close-modal');
+        const apiKeyForm = document.getElementById('api-key-form');
+        const apiKeyInput = document.getElementById('api-key-input');
+        const saveApiKeyBtn = document.getElementById('save-api-key-btn');
+        const removeApiKeyBtn = document.getElementById('remove-api-key-btn');
+        const apiKeyError = document.getElementById('api-key-error');
+        const suggestionItems = document.querySelectorAll('.suggestion-item');
+        
+        // Enable/disable submit button based on input
+        messageInput.addEventListener('input', function() {
+            submitButton.disabled = !this.value.trim();
+        });
+        
+        // Handle form submission
+        messageForm.addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            if (!messageInput.value.trim()) return;
+            
+            // Show thinking indicator
+            thinkingIndicator.classList.remove('hidden');
+            
+            // Scroll to bottom
+            scrollToBottom();
+            
+            const formData = new FormData(this);
+            
+            try {
+                const response = await fetch('{% url "chat:send_message" %}', {
+                    method: 'POST',
+                    body: formData,
+                    headers: {
+                        'X-Requested-With': 'XMLHttpRequest',
+                    }
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    // Clear input
+                    messageInput.value = '';
+                    submitButton.disabled = true;
+                    
+                    // Refresh the messages (in a real app, you'd append the new messages)
+                    location.reload();
+                } else {
+                    console.error('Error:', data.error);
+                    alert('Error: ' + data.error);
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('An error occurred. Please try again.');
+            } finally {
+                // Hide thinking indicator
+                thinkingIndicator.classList.add('hidden');
+            }
+        });
+        
+        // Handle GPT version selection
+        gpt35Button.addEventListener('click', function() {
+            gpt35Button.classList.add('tab-active');
+            gpt4Button.classList.remove('tab-active');
+            gptVersionInput.value = 'gpt-3.5-turbo';
+        });
+        
+        gpt4Button.addEventListener('click', function() {
+            gpt4Button.classList.add('tab-active');
+            gpt35Button.classList.remove('tab-active');
+            gptVersionInput.value = 'gpt-4';
+        });
+        
+        // Clear chat
+        clearChatBtn.addEventListener('click', async function() {
+            if (confirm('Are you sure you want to clear the chat?')) {
+                try {
+                    const response = await fetch('{% url "chat:clear_chat" %}', {
+                        method: 'POST',
+                        headers: {
+                            'X-CSRFToken': '{{ csrf_token }}',
+                            'X-Requested-With': 'XMLHttpRequest',
+                        }
+                    });
+                    
+                    if (response.ok) {
+                        location.reload();
+                    } else {
+                        alert('Failed to clear chat');
+                    }
+                } catch (error) {
+                    console.error('Error:', error);
+                    alert('An error occurred. Please try again.');
+                }
+            }
+        });
+        
+        // Toggle theme
+        toggleThemeBtn.addEventListener('click', async function() {
+            try {
+                const response = await fetch('{% url "chat:toggle_theme" %}', {
+                    method: 'POST',
+                    headers: {
+                        'X-CSRFToken': '{{ csrf_token }}',
+                        'X-Requested-With': 'XMLHttpRequest',
+                    }
+                });
+                
+                if (response.ok) {
+                    location.reload();
+                }
+            } catch (error) {
+                console.error('Error:', error);
+            }
+        });
+        
+        // Toggle sidebar
+        toggleSidebarBtn.addEventListener('click', function() {
+            if (sidebar.classList.contains('w-16')) {
+                sidebar.classList.remove('w-16');
+                sidebar.classList.add('w-72');
+                sidebarContent.forEach(item => {
+                    item.classList.remove('hidden');
+                });
+                toggleSidebarBtn.innerHTML = '<i class="fas fa-times"></i>';
+            } else {
+                sidebar.classList.remove('w-72');
+                sidebar.classList.add('w-16');
+                sidebarContent.forEach(item => {
+                    item.classList.add('hidden');
+                });
+                toggleSidebarBtn.innerHTML = '<i class="fas fa-bars"></i>';
+            }
+        });
+        
+        // Handle window resize for responsive sidebar
+        function handleResize() {
+            if (window.innerWidth <= 720) {
+                sidebar.classList.remove('w-72');
+                sidebar.classList.add('w-16');
+                sidebarContent.forEach(item => {
+                    item.classList.add('hidden');
+                });
+                toggleSidebarBtn.innerHTML = '<i class="fas fa-bars"></i>';
+            } else {
+                sidebar.classList.remove('w-16');
+                sidebar.classList.add('w-72');
+                sidebarContent.forEach(item => {
+                    item.classList.remove('hidden');
+                });
+                toggleSidebarBtn.innerHTML = '<i class="fas fa-times"></i>';
+            }
+        }
+        
+        window.addEventListener('resize', handleResize);
+        handleResize();
+        
+        // Settings modal
+        openSettingsBtn.addEventListener('click', function() {
+            settingsModal.classList.add('modal-open');
+        });
+        
+        closeModalBtn.addEventListener('click', function() {
+            settingsModal.classList.remove('modal-open');
+        });
+        
+        // API key form
+        apiKeyForm.addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const apiKey = apiKeyInput.value.trim();
+            if (!apiKey) {
+                apiKeyError.textContent = 'Please enter an API key';
+                return;
+            }
+            
+            saveApiKeyBtn.disabled = true;
+            saveApiKeyBtn.innerHTML = '<span class="loading loading-spinner"></span><p>Checking Api Key</p>';
+            
+            try {
+                // First check if the API key is valid
+                const checkResponse = await fetch('{% url "chat:check_api_key" %}', {
+                    method: 'POST',
+                    body: JSON.stringify({ api_key: apiKey }),
+                    headers: {
+                        'Content-Type': 'application/json',
+                    }
+                });
+                
+                if (checkResponse.ok) {
+                    // If valid, save it
+                    const saveResponse = await fetch('{% url "chat:save_api_key" %}', {
+                        method: 'POST',
+                        body: new FormData(apiKeyForm),
+                        headers: {
+                            'X-Requested-With': 'XMLHttpRequest',
+                        }
+                    });
+                    
+                    if (saveResponse.ok) {
+                        location.reload();
+                    } else {
+                        const data = await saveResponse.json();
+                        apiKeyError.textContent = data.error || 'Failed to save API key';
+                    }
+                } else {
+                    const data = await checkResponse.json();
+                    apiKeyError.textContent = data.error || 'Invalid API key';
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                apiKeyError.textContent = 'An error occurred. Please try again.';
+            } finally {
+                saveApiKeyBtn.disabled = false;
+                saveApiKeyBtn.textContent = 'save to localStorage';
+            }
+        });
+        
+        // Remove API key
+        if (removeApiKeyBtn) {
+            removeApiKeyBtn.addEventListener('click', async function() {
+                try {
+                    const response = await fetch('{% url "chat:remove_api_key" %}', {
+                        method: 'POST',
+                        headers: {
+                            'X-CSRFToken': '{{ csrf_token }}',
+                            'X-Requested-With': 'XMLHttpRequest',
+                        }
+                    });
+                    
+                    if (response.ok) {
+                        location.reload();
+                    }
+                } catch (error) {
+                    console.error('Error:', error);
+                    apiKeyError.textContent = 'Failed to remove API key';
+                }
+            });
+        }
+        
+        // Template suggestions
+        suggestionItems.forEach(item => {
+            item.addEventListener('click', function() {
+                const prompt = this.getAttribute('data-prompt');
+                messageInput.value = prompt;
+                messageInput.focus();
+                submitButton.disabled = false;
+            });
+        });
+        
+        // Format markdown content
+        document.querySelectorAll('.markdown-content').forEach(function(element) {
+            element.innerHTML = element.textContent;
+        });
+        
+        // Scroll to bottom on load
+        function scrollToBottom() {
+            messagesEnd.scrollIntoView({ behavior: 'smooth' });
+        }
+        
+        scrollToBottom();
+    });
+</script>
+{% endblock %}
+
